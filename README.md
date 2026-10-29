@@ -1,7 +1,8 @@
 # Code review Monte Carlo simulator
 
 A dependency-free Python application comparing agile code review with
-waterfall reviews started after 90% of a 4,000-line project is written.
+waterfall reviews started after 90% of a project is written. Projects contain
+4,000 lines by default; set `--total-lines` to change the size.
 
 Requires Python 3.10 or newer. Run from this directory:
 
@@ -38,6 +39,10 @@ python3 -m code_review_sim --json results.json --csv results.csv
 # Generate a self-contained visual report.
 python3 -m code_review_sim --html report.html
 
+# Run 10,000 trials for a 5,000-line project and generate its report.
+python3 -m code_review_sim --trials 10000 --seed 42 --total-lines 5000 \
+  --html report.html
+
 # Deterministic sanity check: no revision work.
 python3 -m code_review_sim --trials 1 --revision-probability 0
 ```
@@ -49,12 +54,14 @@ computed from each sampled block.
 
 ## What the model assumes
 
-Each trial creates exactly 4,000 original lines. Agile review sizes are sampled
-from `Binomial(2 * agile_block_size, 0.5)`. The configured size is the uncapped
+Each trial creates `total_lines` original lines (4,000 by default). Agile
+review sizes are sampled from `Binomial(2 * agile_block_size, 0.5)`.
+The configured size is the uncapped
 distribution mean. Zero-sized samples are redrawn to ensure progress, and a
 final positive sample is capped at the remaining lines. Agile partitions are
-sampled anew for every trial. Waterfall reviews always cover the first 3,600
-lines and then the final 400 lines.
+sampled anew for every trial. Waterfall reviews cover the first 90% of the
+project, rounded down, and then the remaining lines. For 4,000 lines, those
+reviews cover 3,600 and 400 lines.
 
 Initial review cost is proportional to block size:
 
@@ -109,7 +116,7 @@ JSON contains configuration, both strategy summaries, per-review-ordinal
 average lifecycle data (`average_run` for each strategy), and comparison
 statistics. Agile `blocks` and `average_run` rows are averages across trials,
 not a single partition. Missing ordinal reviews contribute zero lines and
-effort, with their boundaries at line 4,000.
+effort, with their boundaries at `total_lines`.
 CSV contains one flattened summary row per strategy. Neither export contains
 individual trial records.
 
@@ -140,10 +147,11 @@ the confidence interval describes uncertainty in mean paired savings.
 The average-run images use mean effort by review ordinal across the same
 trials. They are not selected individual trials, and average block sizes,
 boundaries, and revision counts can be fractional. Missing trailing reviews
-contribute zero effort and use line 4,000 as both boundaries. Both methods
+contribute zero effort and use the project end as both boundaries. Both methods
 share an effort scale; code-progress milestones identify when reviews start.
-Waterfall review first starts after 3,600 original lines, then covers the final
-400 lines. A final agile block may be shorter than its nominal mean.
+Waterfall review first starts after 90% of the original lines, then covers the
+remainder. For 4,000 lines, its boundary is 3,600. A final agile block may be
+shorter than its nominal mean.
 
 Regenerate existing HTML reports with `--html report.html` to include the new
 images. Legacy summary dictionaries without block averages still render the

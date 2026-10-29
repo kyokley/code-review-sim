@@ -26,12 +26,14 @@ def _validate_config(config):
     if not isinstance(config, SimulationConfig):
         raise ValueError("config must be a SimulationConfig")
 
-    for name in ("trials", "agile_block_size", "seed"):
+    for name in ("trials", "agile_block_size", "seed", "total_lines"):
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"{name} must be an integer")
     if config.trials <= 0:
         raise ValueError("trials must be positive")
+    if config.total_lines <= 0:
+        raise ValueError("total_lines must be positive")
     if not 1 <= config.agile_block_size <= TOTAL_LINES:
         raise ValueError("agile_block_size must be between 1 and 4000")
     if not isinstance(config.revision_probability, (int, float)) or isinstance(
@@ -117,7 +119,10 @@ def _summarize(values):
 def run_simulation(config):
     """Run paired review-strategy trials and return JSON-safe summaries."""
     _validate_config(config)
-    waterfall_blocks = [3600, 400]
+    waterfall_split = (9 * config.total_lines) // 10
+    waterfall_blocks = [
+        size for size in (waterfall_split, config.total_lines - waterfall_split) if size
+    ]
     strategies = {
         "agile": {
             "blocks": [],
@@ -149,15 +154,17 @@ def run_simulation(config):
     agile_rng = random.Random(config.seed ^ 0x9E3779B97F4A7C15)
     for trial_index in range(config.trials):
         # One shared vector preserves paired per-line revisions across partitions.
-        revision_flags = [rng.random() < config.revision_probability for _ in range(TOTAL_LINES)]
-        agile_blocks = _sample_agile_blocks(agile_rng, config.agile_block_size)
+        revision_flags = [rng.random() < config.revision_probability for _ in range(config.total_lines)]
+        agile_blocks = _sample_agile_blocks(
+            agile_rng, config.agile_block_size, total_lines=config.total_lines
+        )
         for name, block_sizes in (("agile", agile_blocks), ("waterfall", waterfall_blocks)):
             result = strategies[name]
             if name == "agile":
                 while len(result["block_sums"]) < len(block_sizes):
                     block = _block_accumulator()
-                    block["start_line"] = trial_index * TOTAL_LINES
-                    block["end_line"] = trial_index * TOTAL_LINES
+                    block["start_line"] = trial_index * config.total_lines
+                    block["end_line"] = trial_index * config.total_lines
                     result["block_sums"].append(block)
             cursor = 0
             initial_review = 0.0
@@ -188,10 +195,10 @@ def run_simulation(config):
 
             if name == "agile":
                 for block in result["block_sums"][len(block_sizes):]:
-                    block["start_line"] += TOTAL_LINES
-                    block["end_line"] += TOTAL_LINES
+                    block["start_line"] += config.total_lines
+                    block["end_line"] += config.total_lines
 
-            writing = TOTAL_LINES * config.write_time_per_line
+            writing = config.total_lines * config.write_time_per_line
             revision = revised_lines * config.revision_time_per_line
             total = writing + initial_review + revision + rereview
             result["writing"].append(writing)
@@ -242,7 +249,7 @@ def run_simulation(config):
         confidence_interval = [mean_saved - margin, mean_saved + margin]
 
     return {
-        "config": {**{field.name: getattr(config, field.name) for field in fields(config)}, "total_lines": TOTAL_LINES},
+        "config": {field.name: getattr(config, field.name) for field in fields(config)},
         "strategies": output_strategies,
         "comparison": {
             "mean_time_saved": mean_saved,

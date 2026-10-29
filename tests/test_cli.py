@@ -69,13 +69,13 @@ class CliTests(unittest.TestCase):
     def test_custom_arguments_map_to_config(self):
         captured = []
         self.invoke_with_engine(
-            ["--trials", "9", "--seed", "7", "--block-size", "250",
+            ["--trials", "9", "--seed", "7", "--block-size", "250", "--total-lines", "5000",
              "--revision-probability", ".2", "--write-time-per-line", "2",
              "--review-time-per-line", ".5", "--revision-time-per-line", "3",
              "--review-setup-time", "4"],
             lambda config: captured.append(config) or sample_result(),
         )
-        self.assertEqual(captured, [SimulationConfig(9, 7, 250, .2, 2, .5, 3, 4)])
+        self.assertEqual(captured, [SimulationConfig(9, 7, 250, .2, 2, .5, 3, 4, 5000)])
 
     def test_json_and_csv_exports(self):
         result = sample_result()
@@ -110,6 +110,24 @@ class CliTests(unittest.TestCase):
                 result["strategies"]["agile"]["blocks"],
             )
 
+    def test_5000_line_cli_exports_preserve_dynamic_waterfall(self):
+        config = SimulationConfig(trials=2, seed=73, total_lines=5000)
+        result = run_simulation(config)
+        with tempfile.TemporaryDirectory() as directory:
+            json_path = Path(directory, "result.json")
+            csv_path = Path(directory, "summary.csv")
+            self.invoke_with_engine(
+                ["--total-lines", "5000", "--json", str(json_path), "--csv", str(csv_path)],
+                lambda _: result,
+            )
+            exported = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(exported["config"]["total_lines"], 5000)
+            self.assertEqual(exported["strategies"]["waterfall"]["blocks"], [4500, 500])
+            self.assertAlmostEqual(sum(exported["strategies"]["agile"]["blocks"]), 5000)
+            with csv_path.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(json.loads(rows[1]["blocks"]), [4500, 500])
+
     def test_engine_validation_error_is_argparse_error(self):
         stderr = io.StringIO()
         module = types.ModuleType("code_review_sim.simulation")
@@ -143,6 +161,8 @@ class CliTests(unittest.TestCase):
         self.assertIn("nominal agile review block size", result.stdout)
         self.assertIn("average this many lines", result.stdout)
         self.assertIn("default: 200", result.stdout)
+        self.assertIn("--total-lines TOTAL_LINES", result.stdout)
+        self.assertIn("default: 4000", result.stdout)
         self.assertIn("--json PATH", result.stdout)
 
     def test_new_strategy_terms_are_exposed_in_cli_and_exports(self):

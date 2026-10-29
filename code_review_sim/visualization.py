@@ -127,7 +127,7 @@ def _timelines(strategies):
     totals = [sum(sum(max(0.0, _num(block.get(key, 0))) for _, key, _ in _COMPONENTS)
                   for block in strategy["average_run"]) for strategy in strategies.values()]
     shared_scale = max(totals, default=0.0) or 1.0
-    parts = ['<p class="muted">Each image shows averages across trials, not an actual sampled run. Fractional revised-line averages are expected. Rows are mean review-ordinal blocks, not a fixed partition. Agile blocks have fresh random binomial sizes with nominal mean shown in the configuration. Fractional boundaries are averages; missing tail reviews contribute boundaries at 4,000 lines, zero lines, and zero effort. Vertical milestones show mean code progress; horizontal position is serial effort in time units. Both images use the same effort scale. Stage order: Writing → Initial review → Revision → Follow-up review.</p>']
+    parts = ['<p class="muted">Each image shows averages across trials, not an actual sampled run. Fractional revised-line averages are expected. Rows are mean review-ordinal blocks, not a fixed partition. Agile blocks have fresh random binomial sizes with nominal mean shown in the configuration. Fractional boundaries are averages; missing tail reviews contribute boundaries at the project end, zero lines, and zero effort. Vertical milestones show mean code progress; horizontal position is serial effort in time units. Both images use the same effort scale. Stage order: Writing → Initial review → Revision → Follow-up review.</p>']
     for name in ("waterfall", "agile"):
         run = strategies[name]["average_run"]
         if run:

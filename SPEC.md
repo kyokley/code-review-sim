@@ -2,11 +2,12 @@
 
 ## Scope and assumptions
 
-Each trial creates exactly 4,000 original lines. Compare agile reviews
-(blocks nominally averaging 200 lines by default, configurable) with waterfall
-reviews after 3,600 lines and after the final 400 lines. Reviews and revisions
-are serial: reported time is total effort, not elapsed calendar time with
-concurrent developers/reviewers.
+Each trial creates `total_lines` original lines (4,000 by default). Compare agile
+reviews (blocks nominally averaging 200 lines by default, configurable) with
+waterfall reviews after the first 90% of the project and after the remainder.
+The split is rounded down; a one-line project has one nonempty waterfall block.
+Reviews and revisions are serial: reported time is total effort, not elapsed
+calendar time with concurrent developers/reviewers.
 
 A review of a block costs `lines * review_time_per_line * multiplier`, plus
 optional per-review setup time. Multipliers are 1 for 1–100 lines, 1.25 for
@@ -37,10 +38,10 @@ these assumptions; it cannot establish a universal best workflow.
 `trials: int = 1000`, `seed: int = 42`, `agile_block_size: int = 200`,
 `revision_probability: float = 0.1`, `write_time_per_line: float = 1.0`,
 `review_time_per_line: float = 0.25`, `revision_time_per_line: float = 1.0`,
-`review_setup_time: float = 0.0`.
+`review_setup_time: float = 0.0`, `total_lines: int = 4000`.
 
 `code_review_sim.simulation.run_simulation(config) -> dict` returns JSON-safe
-data: `config` (all fields plus `total_lines: 4000`), `strategies` (keys
+data: `config` (all fields, including `total_lines`), `strategies` (keys
 `agile` and `waterfall`), and `comparison`.
 
 For each agile review, sample a block size from `Binomial(2 *
@@ -57,17 +58,19 @@ follow-ups), and `total_time` with `mean`, `stdev`, `p05`, `p50`, `p95`.
 
 For agile, `blocks` is the mean line count at each review ordinal across all
 trials. `average_run` is also averaged by review ordinal. Ordinals absent from
-a trial contribute zero lines and effort, with both boundaries set to 4,000.
-Thus `line_count`, `start_line`, and `end_line` may be fractional. Waterfall
-`blocks` remains `[3600, 400]`.
+a trial contribute zero lines and effort, with both boundaries set to
+`total_lines`.
+Thus `line_count`, `start_line`, and `end_line` may be fractional.
+Waterfall `blocks` uses the 90% split, e.g. `[3600, 400]` for 4,000 lines and
+`[4500, 500]` for 5,000 lines.
 
 Each strategy also contains `average_run`: an ordered list of ordinal
 summaries.
 Each entry has `start_line` (zero-based mean progress boundary), `end_line`
 (exclusive boundary), `line_count`, `mean_writing_time`, `mean_review_time`,
 `mean_revision_time`, `mean_rereview_time`, and `mean_revised_lines`.
-Mean boundaries begin at 0 and end at 4,000; mean ordinal line counts sum to
-4,000. Each mean is averaged across every trial; summing a component across
+Mean boundaries begin at 0 and end at `total_lines`; mean ordinal line counts
+sum to `total_lines`. Each mean is averaged across every trial; summing a component across
 ordinals reproduces its strategy component mean within floating-point
 tolerance. Follow-up costs are averaged from actual per-trial costs, not
 recomputed from mean revised counts.
@@ -79,7 +82,7 @@ for the mean paired difference; null if trials < 2),
 `agile_win_probability`, and `tie_probability`.
 
 Invalid configuration raises `ValueError`. Integer counts reject booleans;
-block size is 1–4,000; trials is positive; seed is an integer; probability is
+block size is 1–4,000; `total_lines` and trials are positive; seed is an integer; probability is
 finite in [0, 1]; time inputs are finite and nonnegative. No third-party runtime
 dependencies. Python 3.10+.
 
@@ -101,14 +104,14 @@ Two embedded SVG images show the average agile and waterfall lifecycle:
 each block's writing, initial review, revision, and follow-up review in serial
 order, on a common effort scale. They visualize block means, not an actual
 sampled run; fractional revised-line averages are valid. Review positions follow
-the original-code boundaries (including 3,600 and 4,000 lines for waterfall
-review). Legacy summary dictionaries without `average_run` remain renderable
+the configured project boundaries (3,600 and 4,000 for the default waterfall;
+4,500 and 5,000 for a 5,000-line project). Legacy summary dictionaries without `average_run` remain renderable
 without inventing timeline data.
 
 ## Verification ownership
 
 Engine lane: tier boundaries, deterministic zero/full revision cases,
-4,000-line conservation including partial blocks, paired fairness, input
+project-line conservation including partial blocks, paired fairness, input
 validation, reproducibility, and uncertainty statistics. CLI lane: argument
 handling, JSON/CSV exports, executable entry points, and clear failure output.
 Integrator: inspect artifacts, run the full unittest suite once after lane

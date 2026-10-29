@@ -15,3 +15,4 @@ class SimulationConfig:
     review_time_per_line: float = 0.25
     revision_time_per_line: float = 1.0
     review_setup_time: float = 0.0
+    total_lines: int = 4000

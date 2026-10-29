@@ -28,6 +28,54 @@ class ReviewMultiplierTests(unittest.TestCase):
 
 
 class SimulationTests(unittest.TestCase):
+    def test_configurable_5000_line_project_and_waterfall_cost(self):
+        result = run_simulation(SimulationConfig(
+            trials=1, seed=42, agile_block_size=200, revision_probability=0,
+            total_lines=5000,
+        ))
+        agile = result["strategies"]["agile"]
+        waterfall = result["strategies"]["waterfall"]
+        self.assertEqual(result["config"]["total_lines"], 5000)
+        self.assertAlmostEqual(sum(agile["blocks"]), 5000)
+        self.assertEqual(agile["average_run"][0]["start_line"], 0)
+        self.assertEqual(agile["average_run"][-1]["end_line"], 5000)
+        self.assertEqual(waterfall["blocks"], [4500, 500])
+        self.assertEqual(waterfall["total_time"]["mean"], 7406.25)
+        expected_agile_review = sum(
+            size * 0.25 * review_multiplier(size) for size in agile["blocks"]
+        )
+        self.assertEqual(agile["mean_writing_time"], 5000)
+        self.assertEqual(agile["mean_review_time"], expected_agile_review)
+        self.assertEqual(
+            sum(row["mean_review_time"] for row in agile["average_run"]),
+            expected_agile_review,
+        )
+        paired = run_simulation(SimulationConfig(trials=4, seed=73, total_lines=5000))
+        self.assertEqual(
+            paired["strategies"]["agile"]["mean_revised_lines"],
+            paired["strategies"]["waterfall"]["mean_revised_lines"],
+        )
+
+    def test_later_ordinal_boundaries_use_configured_project_end(self):
+        partitions = iter(([5000], [1000, 4000]))
+        with patch(
+            "code_review_sim.simulation._sample_agile_blocks",
+            side_effect=lambda *_args, **_kwargs: next(partitions),
+        ):
+            result = run_simulation(SimulationConfig(
+                trials=2, revision_probability=0, total_lines=5000,
+            ))
+        rows = result["strategies"]["agile"]["average_run"]
+        self.assertEqual((rows[1]["start_line"], rows[1]["end_line"]), (3000, 5000))
+        for row in rows:
+            self.assertEqual(row["end_line"] - row["start_line"], row["line_count"])
+
+    def test_single_line_project_skips_zero_waterfall_partition(self):
+        result = run_simulation(SimulationConfig(trials=1, total_lines=1, revision_probability=0))
+        self.assertEqual(result["strategies"]["waterfall"]["blocks"], [1])
+        self.assertEqual(result["strategies"]["waterfall"]["total_time"]["mean"], 1.25)
+        self.assertEqual(sum(result["strategies"]["agile"]["blocks"]), 1)
+
     def test_binomial_sampler_counts_controlled_bernoulli_draws(self):
         class ControlledRng:
             def __init__(self, values):
@@ -61,8 +109,8 @@ class SimulationTests(unittest.TestCase):
         partitions = []
         sampler = simulation._sample_agile_blocks
 
-        def record_partition(rng, mean_block_size):
-            blocks = sampler(rng, mean_block_size)
+        def record_partition(rng, mean_block_size, total_lines=4000):
+            blocks = sampler(rng, mean_block_size, total_lines=total_lines)
             partitions.append(blocks)
             return blocks
 
@@ -129,6 +177,7 @@ class SimulationTests(unittest.TestCase):
     def test_public_schema_uses_agile_and_waterfall_names(self):
         result = run_simulation(SimulationConfig(trials=1))
         self.assertEqual(result["config"]["agile_block_size"], 200)
+        self.assertEqual(result["config"]["total_lines"], 4000)
         self.assertEqual(list(result["strategies"]), ["agile", "waterfall"])
         self.assertIn("agile_win_probability", result["comparison"])
 
@@ -309,6 +358,9 @@ class SimulationTests(unittest.TestCase):
             {"agile_block_size": 0},
             {"agile_block_size": 4001},
             {"agile_block_size": 1.5},
+            {"total_lines": True},
+            {"total_lines": 0},
+            {"total_lines": 1.5},
             {"revision_probability": math.nan},
             {"revision_probability": math.inf},
             {"revision_probability": -0.1},

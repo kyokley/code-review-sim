@@ -24,6 +24,10 @@ def _parser() -> argparse.ArgumentParser:
         help="nominal agile review block size; sampled blocks average this many lines (default: 200)",
     )
     parser.add_argument(
+        "--total-lines", type=int, default=4000,
+        help="original project line count (default: 4000)",
+    )
+    parser.add_argument(
         "--revision-probability", type=float, default=0.1,
         help="per-line revision probability (default: 0.1)",
     )
@@ -139,6 +143,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         review_time_per_line=args.review_time_per_line,
         revision_time_per_line=args.revision_time_per_line,
         review_setup_time=args.review_setup_time,
+        total_lines=args.total_lines,
     )
 
     try:
