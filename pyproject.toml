@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "code-review-sim"
+version = "0.1.0"
+description = "Illustrative Monte Carlo comparison of code review strategies"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+code-review-sim = "code_review_sim.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["code_review_sim*"]
