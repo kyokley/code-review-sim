@@ -53,8 +53,36 @@ def _validate_config(config):
             raise ValueError(f"{name} must be finite and nonnegative")
 
 
-def _blocks(size):
-    return [min(size, TOTAL_LINES - start) for start in range(0, TOTAL_LINES, size)]
+def _sample_binomial(rng, trials, probability=0.5):
+    """Sample a binomial count using Python 3.10-compatible Bernoulli draws."""
+    return sum(rng.random() < probability for _ in range(trials))
+
+
+def _sample_agile_blocks(rng, mean_block_size, total_lines=TOTAL_LINES):
+    """Draw positive binomial blocks until they cover the original code."""
+    blocks = []
+    remaining = total_lines
+    while remaining:
+        size = 0
+        while size == 0:
+            size = _sample_binomial(rng, 2 * mean_block_size)
+        size = min(size, remaining)
+        blocks.append(size)
+        remaining -= size
+    return blocks
+
+
+def _block_accumulator():
+    return {
+        "start_line": 0.0,
+        "end_line": 0.0,
+        "line_count": 0.0,
+        "writing_time": 0.0,
+        "review_time": 0.0,
+        "revision_time": 0.0,
+        "rereview_time": 0.0,
+        "revised_lines": 0.0,
+    }
 
 
 def _review_cost(lines, config):
@@ -89,24 +117,11 @@ def _summarize(values):
 def run_simulation(config):
     """Run paired review-strategy trials and return JSON-safe summaries."""
     _validate_config(config)
-    agile_blocks = _blocks(config.agile_block_size)
     waterfall_blocks = [3600, 400]
     strategies = {
         "agile": {
-            "blocks": agile_blocks,
-            "block_sums": [
-                {
-                    "start_line": sum(agile_blocks[:index]),
-                    "end_line": sum(agile_blocks[: index + 1]),
-                    "line_count": size,
-                    "writing_time": 0.0,
-                    "review_time": 0.0,
-                    "revision_time": 0.0,
-                    "rereview_time": 0.0,
-                    "revised_lines": 0.0,
-                }
-                for index, size in enumerate(agile_blocks)
-            ],
+            "blocks": [],
+            "block_sums": [],
             "writing": [],
             "review": [],
             "revision": [],
@@ -117,19 +132,7 @@ def run_simulation(config):
         },
         "waterfall": {
             "blocks": waterfall_blocks,
-            "block_sums": [
-                {
-                    "start_line": sum(waterfall_blocks[:index]),
-                    "end_line": sum(waterfall_blocks[: index + 1]),
-                    "line_count": size,
-                    "writing_time": 0.0,
-                    "review_time": 0.0,
-                    "revision_time": 0.0,
-                    "rereview_time": 0.0,
-                    "revised_lines": 0.0,
-                }
-                for index, size in enumerate(waterfall_blocks)
-            ],
+            "block_sums": [_block_accumulator() for _ in waterfall_blocks],
             "writing": [],
             "review": [],
             "revision": [],
@@ -140,12 +143,22 @@ def run_simulation(config):
         },
     }
 
+    # Keep revision outcomes on their original stream; block sizing uses a
+    # separate deterministic stream so it cannot perturb waterfall results.
     rng = random.Random(config.seed)
-    for _ in range(config.trials):
+    agile_rng = random.Random(config.seed ^ 0x9E3779B97F4A7C15)
+    for trial_index in range(config.trials):
         # One shared vector preserves paired per-line revisions across partitions.
         revision_flags = [rng.random() < config.revision_probability for _ in range(TOTAL_LINES)]
+        agile_blocks = _sample_agile_blocks(agile_rng, config.agile_block_size)
         for name, block_sizes in (("agile", agile_blocks), ("waterfall", waterfall_blocks)):
             result = strategies[name]
+            if name == "agile":
+                while len(result["block_sums"]) < len(block_sizes):
+                    block = _block_accumulator()
+                    block["start_line"] = trial_index * TOTAL_LINES
+                    block["end_line"] = trial_index * TOTAL_LINES
+                    result["block_sums"].append(block)
             cursor = 0
             initial_review = 0.0
             revised_lines = 0
@@ -164,11 +177,19 @@ def run_simulation(config):
                     review_count += 1
 
                 block = result["block_sums"][block_index]
+                block["start_line"] += cursor - size
+                block["end_line"] += cursor
+                block["line_count"] += size
                 block["writing_time"] += size * config.write_time_per_line
                 block["review_time"] += initial_block_review
                 block["revision_time"] += revised * config.revision_time_per_line
                 block["rereview_time"] += rereview_block
                 block["revised_lines"] += revised
+
+            if name == "agile":
+                for block in result["block_sums"][len(block_sizes):]:
+                    block["start_line"] += TOTAL_LINES
+                    block["end_line"] += TOTAL_LINES
 
             writing = TOTAL_LINES * config.write_time_per_line
             revision = revised_lines * config.revision_time_per_line
@@ -183,13 +204,15 @@ def run_simulation(config):
 
     output_strategies = {}
     for name, result in strategies.items():
+        if name == "agile":
+            result["blocks"] = [block["line_count"] / config.trials for block in result["block_sums"]]
         output_strategies[name] = {
             "blocks": result["blocks"],
             "average_run": [
                 {
-                    "start_line": block["start_line"],
-                    "end_line": block["end_line"],
-                    "line_count": block["line_count"],
+                    "start_line": block["start_line"] / config.trials,
+                    "end_line": block["end_line"] / config.trials,
+                    "line_count": block["line_count"] / config.trials,
                     "mean_writing_time": block["writing_time"] / config.trials,
                     "mean_review_time": block["review_time"] / config.trials,
                     "mean_revision_time": block["revision_time"] / config.trials,

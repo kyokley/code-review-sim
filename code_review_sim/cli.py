@@ -20,8 +20,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--trials", type=int, default=1000, help="number of trials (default: 1000)")
     parser.add_argument("--seed", type=int, default=42, help="random seed (default: 42)")
     parser.add_argument(
-        "--block-size", type=int, default=100,
-        help="agile review block size in lines (default: 100)",
+        "--block-size", type=int, default=200,
+        help="nominal agile review block size; sampled blocks average this many lines (default: 200)",
     )
     parser.add_argument(
         "--revision-probability", type=float, default=0.1,

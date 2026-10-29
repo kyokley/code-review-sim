@@ -30,6 +30,11 @@ def _raw_num(value):
     return format(_num(value), ".15g")
 
 
+def _line_num(value):
+    value = _num(value)
+    return str(int(value)) if value.is_integer() else _raw_num(value)
+
+
 def _svg(result):
     strategies = result["strategies"]
     totals = [max(0.0, _num(s["total_time"]["mean"])) for s in strategies.values()]
@@ -84,7 +89,7 @@ def _timeline_svg(name, run, effort_scale):
     height = top + max(1, len(run)) * row_height + 46
     end_time = sum(sum(_num(block.get(key, 0)) for _, key, _ in stages) for block in run)
     svg_id = f"{name}-timeline"
-    out = [f'<svg id="{svg_id}" viewBox="0 0 900 {height}" role="img" aria-labelledby="{svg_id}-title {svg_id}-desc" data-effort-scale="{_raw_num(effort_scale)}" data-effort-end="{_raw_num(end_time)}"><title id="{svg_id}-title">{html.escape(name.title())} average lifecycle timeline</title><desc id="{svg_id}-desc">Average across trials, not a sampled run. Each row is one original-code block. Horizontal position and width show cumulative serial effort on the same scale as the other strategy; row position and milestone labels show code progress in lines. Stages: Writing, Initial review, Revision, Follow-up review.</desc>']
+    out = [f'<svg id="{svg_id}" viewBox="0 0 900 {height}" role="img" aria-labelledby="{svg_id}-title {svg_id}-desc" data-effort-scale="{_raw_num(effort_scale)}" data-effort-end="{_raw_num(end_time)}"><title id="{svg_id}-title">{html.escape(name.title())} average lifecycle timeline</title><desc id="{svg_id}-desc">Average across trials, not a sampled run. Each row averages the original-code block at the same review ordinal across all trials; missing tail reviews contribute zero effort. Horizontal position and width show cumulative serial effort on the same scale as the other strategy; row position and milestone labels show mean code progress in lines. Stages: Writing, Initial review, Revision, Follow-up review.</desc>']
     out.append(f'<text x="{left}" y="19" class="svg-small">Serial effort (time units), common scale ends at {_text(effort_scale)}</text>')
     out.append(f'<line x1="{left}" y1="34" x2="{right}" y2="34" stroke="#89969a"/><line x1="{left}" y1="40" x2="{left}" y2="{height-16}" stroke="#89969a"/>')
     out.append(f'<text x="8" y="43" class="svg-small">Code progress</text><text x="{left}" y="{height-2}" class="svg-small">Effort 0</text><text x="{right}" y="{height-2}" text-anchor="end" class="svg-small">Shared effort scale</text>')
@@ -99,15 +104,15 @@ def _timeline_svg(name, run, effort_scale):
             width = duration * scale
             stage_id = label.lower().replace(" ", "-")
             revised_detail = f'; {_text(block.get("mean_revised_lines", 0))} revised lines' if label == "Revision" else ""
-            title = f'<title>{html.escape(name.title())}, lines {int(start)}–{int(end)} — {label}: {_text(block.get(key, 0))} time units{revised_detail}</title>'
+            title = f'<title>{html.escape(name.title())}, mean review ordinal {index + 1}, lines {_line_num(start)}–{_line_num(end)} — {label}: {_text(block.get(key, 0))} time units{revised_detail}</title>'
             if width > 0:
-                out.append(f'<rect x="{x:.3f}" y="{y}" width="{width:.3f}" height="{max(1, row_height-1)}" fill="{color}" stroke="#fff" stroke-width=".4" data-stage="{stage_id}" data-start="{int(start)}" data-end="{int(end)}">{title}</rect>')
+                out.append(f'<rect x="{x:.3f}" y="{y}" width="{width:.3f}" height="{max(1, row_height-1)}" fill="{color}" stroke="#fff" stroke-width=".4" data-review-ordinal="{index + 1}" data-stage="{stage_id}" data-start="{_raw_num(start)}" data-end="{_raw_num(end)}">{title}</rect>')
             else:
-                out.append(f'<line x1="{x:.3f}" y1="{y}" x2="{x:.3f}" y2="{y+max(1,row_height-1)}" stroke="{color}" stroke-width="1" stroke-dasharray="1 1" data-stage="{stage_id}" data-start="{int(start)}" data-end="{int(end)}">{title}</line>')
+                out.append(f'<line x1="{x:.3f}" y1="{y}" x2="{x:.3f}" y2="{y+max(1,row_height-1)}" stroke="{color}" stroke-width="1" stroke-dasharray="1 1" data-review-ordinal="{index + 1}" data-stage="{stage_id}" data-start="{_raw_num(start)}" data-end="{_raw_num(end)}">{title}</line>')
             x += width
             elapsed += duration
         if index == 0 or end == total_lines or (total_lines > 1000 and end % 1000 == 0):
-            out.append(f'<text x="8" y="{y+max(8,row_height-2)}" class="svg-small">{int(start)}–{int(end)} lines</text>')
+            out.append(f'<text x="8" y="{y+max(8,row_height-2)}" class="svg-small">{_line_num(start)}–{_line_num(end)} lines</text>')
     out.append("</svg>")
     return "".join(out)
 
@@ -118,11 +123,11 @@ def _timelines(strategies):
     totals = [sum(sum(max(0.0, _num(block.get(key, 0))) for _, key, _ in _COMPONENTS)
                   for block in strategy["average_run"]) for strategy in strategies.values()]
     shared_scale = max(totals, default=0.0) or 1.0
-    parts = ['<p class="muted">Each image shows averages across trials, not an actual sampled run. Fractional revised-line averages are expected. Rows are original-code blocks; vertical milestones are code progress, while horizontal position is serial effort in time units. Both images use the same effort scale. Stage order: Writing → Initial review → Revision → Follow-up review.</p>']
+    parts = ['<p class="muted">Each image shows averages across trials, not an actual sampled run. Fractional revised-line averages are expected. Rows are mean review-ordinal blocks, not a fixed partition. Agile blocks have fresh random binomial sizes with nominal mean shown in the configuration. Fractional boundaries are averages; missing tail reviews contribute boundaries at 4,000 lines, zero lines, and zero effort. Vertical milestones show mean code progress; horizontal position is serial effort in time units. Both images use the same effort scale. Stage order: Writing → Initial review → Revision → Follow-up review.</p>']
     for name in ("agile", "waterfall"):
         run = strategies[name]["average_run"]
         if run:
-            parts.append(f'<figure class="timeline"><figcaption>{html.escape(name.title())} method · {len(run)} original-code blocks</figcaption><div class="chart">{_timeline_svg(name, run, shared_scale)}</div></figure>')
+            parts.append(f'<figure class="timeline"><figcaption>{html.escape(name.title())} method · {len(run)} mean review-ordinal blocks</figcaption><div class="chart">{_timeline_svg(name, run, shared_scale)}</div></figure>')
         else:
             parts.append(f'<p class="muted">{html.escape(name.title())} lifecycle timeline unavailable: no block summaries.</p>')
     return "".join(parts)
@@ -135,7 +140,7 @@ def render_html(result: dict) -> str:
     ci_text = "Not available (one trial)" if ci is None else f"[{_text(ci[0])}, {_text(ci[1])}]"
     saving = _num(comp.get("mean_time_saved", 0))
     signed = ("+" if saving > 0 else "−" if saving < 0 else "") + _text(abs(saving))
-    config_rows = "".join(f"<div><dt>{html.escape(str(k).replace('_',' ').title())}</dt><dd>{html.escape(str(v), quote=True)}</dd></div>" for k,v in cfg.items())
+    config_rows = "".join(f"<div><dt>{html.escape('Agile Block Size (nominal mean)' if k == 'agile_block_size' else str(k).replace('_',' ').title())}</dt><dd>{html.escape(str(v), quote=True)}</dd></div>" for k,v in cfg.items())
     bars = "".join(f'<li><span class="swatch" style="--swatch:{color}"></span>{label}</li>' for label,_,color in _COMPONENTS)
     cards = "".join(f'<article class="strategy"><h3>{html.escape(name.title())}</h3><p class="total">{_text(s["total_time"]["mean"])} <small>mean units</small></p><p>Median {_text(s["total_time"]["p50"])} · { _text(s["mean_revised_lines"])} revised lines · {_text(s["mean_review_count"])} reviews</p></article>' for name,s in strategies.items())
     component_rows = "".join(f'<tr><th scope="row">{label}</th>{"".join(f"<td>{_text(s.get(key, 0))}</td>" for s in strategies.values())}</tr>' for label,key,_ in _COMPONENTS)

@@ -14,11 +14,12 @@ from unittest.mock import patch
 
 from code_review_sim import cli
 from code_review_sim.model import SimulationConfig
+from code_review_sim.simulation import run_simulation
 
 
 def sample_result():
     strategy = {
-        "blocks": [4000],
+        "blocks": [2000.25, 1999.75],
         "mean_writing_time": 4000.0,
         "mean_review_time": 1000.0,
         "mean_revision_time": 0.0,
@@ -30,7 +31,7 @@ def sample_result():
     waterfall = dict(strategy, blocks=[3600, 400])
     waterfall["total_time"] = {"mean": 5925.0, "stdev": 0.0, "p05": 5925.0, "p50": 5925.0, "p95": 5925.0}
     return {
-        "config": {"trials": 1, "seed": 42, "agile_block_size": 100},
+        "config": {"trials": 1, "seed": 42, "agile_block_size": 200},
         "strategies": {"agile": strategy, "waterfall": waterfall},
         "comparison": {
             "mean_time_saved": 925.0,
@@ -88,6 +89,26 @@ class CliTests(unittest.TestCase):
             self.assertEqual([row["strategy"] for row in rows], ["agile", "waterfall"])
             self.assertEqual(rows[0]["total_time_mean"], "5000.0")
             self.assertEqual(rows[1]["total_time_p95"], "5925.0")
+            self.assertEqual(json.loads(rows[0]["blocks"]), [2000.25, 1999.75])
+
+    def test_exports_preserve_simulated_mean_agile_blocks(self):
+        result = run_simulation(SimulationConfig(trials=5, seed=73))
+        with tempfile.TemporaryDirectory() as directory:
+            json_path = Path(directory, "result.json")
+            csv_path = Path(directory, "summary.csv")
+            self.invoke_with_engine(
+                ["--json", str(json_path), "--csv", str(csv_path)],
+                lambda _: result,
+            )
+            exported = json.loads(json_path.read_text(encoding="utf-8"))
+            self.assertEqual(exported["strategies"]["agile"]["blocks"], result["strategies"]["agile"]["blocks"])
+            self.assertAlmostEqual(sum(exported["strategies"]["agile"]["blocks"]), 4000)
+            with csv_path.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual(
+                json.loads(rows[0]["blocks"]),
+                result["strategies"]["agile"]["blocks"],
+            )
 
     def test_engine_validation_error_is_argparse_error(self):
         stderr = io.StringIO()
@@ -119,6 +140,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Compare agile and waterfall", result.stdout)
         self.assertIn("--block-size", result.stdout)
+        self.assertIn("nominal agile review block size", result.stdout)
+        self.assertIn("average this many lines", result.stdout)
+        self.assertIn("default: 200", result.stdout)
         self.assertIn("--json PATH", result.stdout)
 
     def test_new_strategy_terms_are_exposed_in_cli_and_exports(self):

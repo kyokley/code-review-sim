@@ -98,6 +98,33 @@ class VisualizationTests(unittest.TestCase):
         self.assertNotIn('id="waterfall-timeline"', source)
         self.assertIn("Average lifecycle timeline unavailable", source)
 
+    def test_agile_random_block_averages_preserve_fractional_progress(self):
+        result = sample_result()
+        def block(start, end, count, writing):
+            return {"start_line": start, "end_line": end, "line_count": count,
+                    "mean_writing_time": writing, "mean_review_time": 0,
+                    "mean_revision_time": 0, "mean_rereview_time": 0,
+                    "mean_revised_lines": 0}
+        result["strategies"]["agile"]["average_run"] = [
+            block(0, 199.5, 199.5, 199.5), block(199.5, 4000, 3800.5, 3800.5),
+        ]
+        result["strategies"]["waterfall"]["average_run"] = [
+            block(0, 3600, 3600, 3600), block(3600, 4000, 400, 400),
+        ]
+        source = render_html(result)
+        self.assertIn('data-start="0" data-end="199.5"', source)
+        self.assertIn('data-start="199.5" data-end="4000"', source)
+        self.assertIn("lines 0–199.5", source)
+        self.assertIn("199.5–4000 lines", source)
+        self.assertIn("mean review ordinal 1, lines 0–199.5", source)
+        self.assertIn("mean review-ordinal blocks, not a fixed partition", source)
+        self.assertIn("fresh random binomial sizes with nominal mean", source)
+        self.assertIn("Agile Block Size (nominal mean)", source)
+        self.assertIn('data-effort-end="4000"', source)
+        self.assertEqual(source.count('data-effort-scale="4000"'), 2)
+        parser = SvgParser(); parser.feed(source)
+        self.assertEqual(parser.invalid, [])
+
     def test_zero_effort_and_zero_revision_timeline_geometry(self):
         result = sample_result(1)
         zero_block = {"start_line": 0, "end_line": 4000, "line_count": 4000,

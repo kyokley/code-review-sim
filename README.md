@@ -19,11 +19,12 @@ code-review-sim --trials 10000 --seed 42
 
 ## Experiments
 
-The default experiment runs 1,000 paired trials with 100-line agile
-reviews and a 10% probability that each line needs revision.
+The default experiment runs 1,000 paired trials with agile reviews whose
+nominal block size is 200 lines and a 10% probability that each line needs
+revision.
 
 ```sh
-# Compare 250-line increments with reviews of 3,600 and 400 lines.
+# Compare blocks with a nominal mean of 250 lines against waterfall reviews.
 python3 -m code_review_sim --trials 10000 --seed 42 --block-size 250
 
 # Change the revision probability and effort assumptions.
@@ -41,15 +42,19 @@ python3 -m code_review_sim --html report.html
 python3 -m code_review_sim --trials 1 --revision-probability 0
 ```
 
-With the final command, default agile effort is **5,000 time units**
-and waterfall effort is **5,925 time units**. Writing contributes 4,000 units
-to each; initial review contributes 1,000 and 1,925 respectively.
+With the final command, writing contributes 4,000 units to each strategy.
+Waterfall effort is **5,925 time units**: initial review contributes 1,925.
+Agile effort depends on the sampled partition; its zero-revision review cost is
+computed from each sampled block.
 
 ## What the model assumes
 
-Each trial creates exactly 4,000 original lines. Agile reviews occur after
-each configured block, including any final partial block. Waterfall reviews
-cover the first 3,600 lines and then the final 400 lines.
+Each trial creates exactly 4,000 original lines. Agile review sizes are sampled
+from `Binomial(2 * agile_block_size, 0.5)`. The configured size is the uncapped
+distribution mean. Zero-sized samples are redrawn to ensure progress, and a
+final positive sample is capped at the remaining lines. Agile partitions are
+sampled anew for every trial. Waterfall reviews always cover the first 3,600
+lines and then the final 400 lines.
 
 Initial review cost is proportional to block size:
 
@@ -100,8 +105,11 @@ Higher setup costs can offset the advantage of small review blocks.
 - Win probability is the fraction of trials where agile effort is
   strictly lower. Ties are reported separately.
 
-JSON contains configuration, both strategy summaries, per-block average lifecycle
-data (`average_run` for each strategy), and comparison statistics.
+JSON contains configuration, both strategy summaries, per-review-ordinal
+average lifecycle data (`average_run` for each strategy), and comparison
+statistics. Agile `blocks` and `average_run` rows are averages across trials,
+not a single partition. Missing ordinal reviews contribute zero lines and
+effort, with their boundaries at line 4,000.
 CSV contains one flattened summary row per strategy. Neither export contains
 individual trial records.
 
@@ -129,12 +137,13 @@ The charts show summary statistics, not individual trials or a reconstructed
 probability distribution. Percentile ranges describe variation across trials;
 the confidence interval describes uncertainty in mean paired savings.
 
-The average-run images use the observed mean effort of each block across the
-same trials. They are not selected individual trials, and average revision
-counts can be fractional. Both methods share an effort scale; code-progress
-milestones identify when reviews start. Waterfall review first starts after
-3,600 original lines, then covers the final 400 lines. The final agile
-block may be smaller than the configured block size.
+The average-run images use mean effort by review ordinal across the same
+trials. They are not selected individual trials, and average block sizes,
+boundaries, and revision counts can be fractional. Missing trailing reviews
+contribute zero effort and use line 4,000 as both boundaries. Both methods
+share an effort scale; code-progress milestones identify when reviews start.
+Waterfall review first starts after 3,600 original lines, then covers the final
+400 lines. A final agile block may be shorter than its nominal mean.
 
 Regenerate existing HTML reports with `--html report.html` to include the new
 images. Legacy summary dictionaries without block averages still render the

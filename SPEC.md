@@ -3,9 +3,10 @@
 ## Scope and assumptions
 
 Each trial creates exactly 4,000 original lines. Compare agile reviews
-(100-line blocks by default, configurable) with waterfall reviews after 3,600
-lines and after the final 400 lines. Reviews and revisions are serial: reported
-time is total effort, not elapsed calendar time with concurrent developers/reviewers.
+(blocks nominally averaging 200 lines by default, configurable) with waterfall
+reviews after 3,600 lines and after the final 400 lines. Reviews and revisions
+are serial: reported time is total effort, not elapsed calendar time with
+concurrent developers/reviewers.
 
 A review of a block costs `lines * review_time_per_line * multiplier`, plus
 optional per-review setup time. Multipliers are 1 for 1–100 lines, 1.25 for
@@ -33,7 +34,7 @@ these assumptions; it cannot establish a universal best workflow.
 ## Public Python interface
 
 `code_review_sim.model.SimulationConfig` is a frozen dataclass with fields:
-`trials: int = 1000`, `seed: int = 42`, `agile_block_size: int = 100`,
+`trials: int = 1000`, `seed: int = 42`, `agile_block_size: int = 200`,
 `revision_probability: float = 0.1`, `write_time_per_line: float = 1.0`,
 `review_time_per_line: float = 0.25`, `revision_time_per_line: float = 1.0`,
 `review_setup_time: float = 0.0`.
@@ -42,20 +43,34 @@ these assumptions; it cannot establish a universal best workflow.
 data: `config` (all fields plus `total_lines: 4000`), `strategies` (keys
 `agile` and `waterfall`), and `comparison`.
 
-Each strategy contains `blocks` (list of original block sizes),
+For each agile review, sample a block size from `Binomial(2 *
+agile_block_size, 0.5)`. This distribution has uncapped mean
+`agile_block_size`; redraw zero samples so every review advances. Cap the final
+positive block at the remaining original lines. Sample a new agile partition
+for every trial. Use a separate seeded random stream for block sizing, so
+revision flags and waterfall outcomes retain their existing seeded sequence.
+
+Each strategy contains `blocks`,
 `mean_writing_time`, `mean_review_time` (initial reviews), `mean_revision_time`,
 `mean_rereview_time`, `mean_revised_lines`, `mean_review_count` (including
 follow-ups), and `total_time` with `mean`, `stdev`, `p05`, `p50`, `p95`.
 
-Each strategy also contains `average_run`: an ordered list of block summaries.
-Each block has `start_line` (zero-based progress boundary), `end_line`
+For agile, `blocks` is the mean line count at each review ordinal across all
+trials. `average_run` is also averaged by review ordinal. Ordinals absent from
+a trial contribute zero lines and effort, with both boundaries set to 4,000.
+Thus `line_count`, `start_line`, and `end_line` may be fractional. Waterfall
+`blocks` remains `[3600, 400]`.
+
+Each strategy also contains `average_run`: an ordered list of ordinal
+summaries.
+Each entry has `start_line` (zero-based mean progress boundary), `end_line`
 (exclusive boundary), `line_count`, `mean_writing_time`, `mean_review_time`,
 `mean_revision_time`, `mean_rereview_time`, and `mean_revised_lines`.
-Boundaries cover 0–4,000 exactly. Each mean is averaged across the same trials
-as the strategy summary; summing a component across blocks reproduces the
-strategy component mean within floating-point tolerance. Follow-up costs are
-averaged from actual per-trial costs, not recomputed from rounded mean counts.
-No extra random draws or changes to existing summary statistics are introduced.
+Mean boundaries begin at 0 and end at 4,000; mean ordinal line counts sum to
+4,000. Each mean is averaged across every trial; summing a component across
+ordinals reproduces its strategy component mean within floating-point
+tolerance. Follow-up costs are averaged from actual per-trial costs, not
+recomputed from mean revised counts.
 
 Comparison fields: `mean_time_saved` (waterfall minus agile),
 `mean_percent_saved` (100 * mean_time_saved / waterfall mean; zero if both zero),
@@ -98,7 +113,8 @@ validation, reproducibility, and uncertainty statistics. CLI lane: argument
 handling, JSON/CSV exports, executable entry points, and clear failure output.
 Integrator: inspect artifacts, run the full unittest suite once after lane
 reconciliation, exercise documented commands, and compare a zero-revision
-trial to hand-computed totals (agile 5,000; waterfall 5,925).
+trial to hand-computed waterfall total (5,925) and verify agile effort from
+that trial's sampled partition.
 
 Visualization renderer: focused checks for metric fidelity, self-containment,
 accessible chart descriptions, and valid geometry at zero effort. CLI: HTML
