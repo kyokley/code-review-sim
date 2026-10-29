@@ -45,6 +45,7 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--json", metavar="PATH", help="write exact simulation result as JSON")
     parser.add_argument("--csv", metavar="PATH", help="write per-strategy summary as CSV")
+    parser.add_argument("--html", metavar="PATH", help="write a self-contained visual report as HTML")
     return parser
 
 
@@ -149,6 +150,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             _write_json(args.json, result)
         if args.csv:
             _write_csv(args.csv, result)
+        if args.html:
+            from .visualization import render_html
+
+            Path(args.html).write_text(render_html(result), encoding="utf-8")
         _print_report(result)
     except (ValueError, OSError) as error:
         parser.error(str(error))

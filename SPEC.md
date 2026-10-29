@@ -58,6 +58,20 @@ block size is 1–4,000; trials is positive; seed is an integer; probability is
 finite in [0, 1]; time inputs are finite and nonnegative. No third-party runtime
 dependencies. Python 3.10+.
 
+## Visual report
+
+`code_review_sim.visualization.render_html(result) -> str` returns a complete
+self-contained HTML report from the unchanged simulation summary. The CLI's
+`--html PATH` writes this report as UTF-8 while retaining normal console output.
+It can be combined with JSON and CSV exports without running new trials.
+
+Visualizations compare mean effort components and total-effort p05/p50/p95
+summaries, with signed paired savings, confidence intervals, and experiment
+configuration. Percentile ranges must not be labeled as confidence intervals.
+No raw-trial distributions are inferred from the summaries. Reports work
+offline without runtime dependencies, including for zero effort, tied results,
+negative incremental savings, and a single trial without a confidence interval.
+
 ## Verification ownership
 
 Engine lane: tier boundaries, deterministic zero/full revision cases,
@@ -67,3 +81,10 @@ handling, JSON/CSV exports, executable entry points, and clear failure output.
 Integrator: inspect artifacts, run the full unittest suite once after lane
 reconciliation, exercise documented commands, and compare a zero-revision
 trial to hand-computed totals (incremental 5,000; delayed 5,925).
+
+Visualization renderer: focused checks for metric fidelity, self-containment,
+accessible chart descriptions, and valid geometry at zero effort. CLI: HTML
+flag wiring, shared result identity, UTF-8 output, and concise I/O errors.
+Integrator: reconcile both lanes, run full tests once, generate reports from
+real default and boundary simulations, and inspect rendered reports when a
+browser is available.

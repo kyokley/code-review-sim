@@ -120,6 +120,69 @@ class CliTests(unittest.TestCase):
         self.assertIn("--block-size", result.stdout)
         self.assertIn("--json PATH", result.stdout)
 
+    def test_html_help_mentions_path(self):
+        result = subprocess.run(
+            [sys.executable, "-m", "code_review_sim", "--help"],
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--html PATH", result.stdout)
+
+    def test_html_renderer_receives_result_and_writes_utf8(self):
+        result = sample_result()
+        observed = []
+        renderer = types.ModuleType("code_review_sim.visualization")
+
+        def render_html(value):
+            observed.append(value)
+            return "<html>café</html>"
+
+        renderer.render_html = render_html
+        with tempfile.TemporaryDirectory() as directory:
+            html_path = Path(directory, "report.html")
+            json_path = Path(directory, "result.json")
+            csv_path = Path(directory, "summary.csv")
+            simulation = types.ModuleType("code_review_sim.simulation")
+            simulation.run_simulation = lambda _: result
+            output = io.StringIO()
+            with patch.dict(sys.modules, {
+                "code_review_sim.simulation": simulation,
+                "code_review_sim.visualization": renderer,
+            }), contextlib.redirect_stdout(output):
+                status = cli.main([
+                    "--json", str(json_path), "--csv", str(csv_path), "--html", str(html_path),
+                ])
+            self.assertEqual(status, 0)
+            self.assertEqual(observed, [result])
+            self.assertIs(observed[0], result)
+            self.assertEqual(html_path.read_text(encoding="utf-8"), "<html>café</html>")
+            self.assertEqual(json.loads(json_path.read_text(encoding="utf-8")), result)
+            with csv_path.open(newline="", encoding="utf-8") as stream:
+                self.assertEqual(len(list(csv.DictReader(stream))), 2)
+            self.assertIn("Code review effort comparison", output.getvalue())
+
+    def test_html_renderer_not_loaded_for_plain_run(self):
+        # A plain run must work even when the optional renderer cannot import.
+        with patch.dict(sys.modules, {"code_review_sim.visualization": None}):
+            status, _ = self.invoke_with_engine([], lambda _: sample_result())
+        self.assertEqual(status, 0)
+
+    def test_html_io_failure_is_argparse_error(self):
+        stderr = io.StringIO()
+        simulation = types.ModuleType("code_review_sim.simulation")
+        simulation.run_simulation = lambda _: sample_result()
+        renderer = types.ModuleType("code_review_sim.visualization")
+        renderer.render_html = lambda _: "<html></html>"
+        with patch.dict(sys.modules, {
+            "code_review_sim.simulation": simulation,
+            "code_review_sim.visualization": renderer,
+        }), contextlib.redirect_stderr(stderr):
+            with self.assertRaises(SystemExit) as raised:
+                cli.main(["--html", "/missing-directory/report.html"])
+        self.assertEqual(raised.exception.code, 2)
+        self.assertIn("error:", stderr.getvalue())
+        self.assertNotIn("Traceback", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

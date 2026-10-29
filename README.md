@@ -34,6 +34,9 @@ python3 -m code_review_sim --revision-probability 0.2 \
 # Export machine-readable results while printing the comparison.
 python3 -m code_review_sim --json results.json --csv results.csv
 
+# Generate a self-contained visual report.
+python3 -m code_review_sim --html report.html
+
 # Deterministic sanity check: no revision work.
 python3 -m code_review_sim --trials 1 --revision-probability 0
 ```
@@ -100,6 +103,28 @@ Higher setup costs can offset the advantage of small review blocks.
 JSON contains configuration, both strategy summaries, and comparison statistics.
 CSV contains one flattened summary row per strategy. Neither export contains
 individual trial records.
+
+## Visual reports
+
+```sh
+python3 -m code_review_sim --trials 10000 --seed 42 \
+  --html report.html --json results.json --csv results.csv
+```
+
+Open `report.html` in a web browser. The report works offline, needs no server
+or plotting packages, and contains:
+
+- Mean effort broken down into writing, initial review, revision, and follow-up
+  review, with comparable scales for both strategies.
+- The 5th, 50th, and 95th percentiles of total simulated effort.
+- Paired mean savings, their 95% confidence interval when available, and
+  win/tie probabilities.
+- The experiment configuration and model assumptions needed to interpret it.
+
+HTML, JSON, and CSV exports from one command use the same simulation results.
+The charts show summary statistics, not individual trials or a reconstructed
+probability distribution. Percentile ranges describe variation across trials;
+the confidence interval describes uncertainty in mean paired savings.
 
 These experiments compare the stated assumptions; they do not establish a
 universal best code review process. See [SPEC.md](SPEC.md) for the model contract.
