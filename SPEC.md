@@ -47,6 +47,16 @@ Each strategy contains `blocks` (list of original block sizes),
 `mean_rereview_time`, `mean_revised_lines`, `mean_review_count` (including
 follow-ups), and `total_time` with `mean`, `stdev`, `p05`, `p50`, `p95`.
 
+Each strategy also contains `average_run`: an ordered list of block summaries.
+Each block has `start_line` (zero-based progress boundary), `end_line`
+(exclusive boundary), `line_count`, `mean_writing_time`, `mean_review_time`,
+`mean_revision_time`, `mean_rereview_time`, and `mean_revised_lines`.
+Boundaries cover 0–4,000 exactly. Each mean is averaged across the same trials
+as the strategy summary; summing a component across blocks reproduces the
+strategy component mean within floating-point tolerance. Follow-up costs are
+averaged from actual per-trial costs, not recomputed from rounded mean counts.
+No extra random draws or changes to existing summary statistics are introduced.
+
 Comparison fields: `mean_time_saved` (delayed minus incremental),
 `mean_percent_saved` (100 * mean_time_saved / delayed mean; zero if both zero),
 `paired_savings_ci95` (two-element normal-approximation confidence interval
@@ -61,7 +71,7 @@ dependencies. Python 3.10+.
 ## Visual report
 
 `code_review_sim.visualization.render_html(result) -> str` returns a complete
-self-contained HTML report from the unchanged simulation summary. The CLI's
+self-contained HTML report from the simulation summary. The CLI's
 `--html PATH` writes this report as UTF-8 while retaining normal console output.
 It can be combined with JSON and CSV exports without running new trials.
 
@@ -71,6 +81,14 @@ configuration. Percentile ranges must not be labeled as confidence intervals.
 No raw-trial distributions are inferred from the summaries. Reports work
 offline without runtime dependencies, including for zero effort, tied results,
 negative incremental savings, and a single trial without a confidence interval.
+
+Two embedded SVG images show the average incremental and delayed lifecycle:
+each block's writing, initial review, revision, and follow-up review in serial
+order, on a common effort scale. They visualize block means, not an actual
+sampled run; fractional revised-line averages are valid. Review positions follow
+the original-code boundaries (including 3,600 and 4,000 lines for delayed
+review). Legacy summary dictionaries without `average_run` remain renderable
+without inventing timeline data.
 
 ## Verification ownership
 

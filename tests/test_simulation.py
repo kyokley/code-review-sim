@@ -1,6 +1,8 @@
 import unittest
 from dataclasses import replace
 import math
+import random
+import json
 
 from code_review_sim.model import SimulationConfig
 from code_review_sim.simulation import run_simulation, review_multiplier
@@ -18,6 +20,95 @@ class ReviewMultiplierTests(unittest.TestCase):
 
 
 class SimulationTests(unittest.TestCase):
+    def test_average_run_boundaries_and_conservation(self):
+        default = run_simulation(SimulationConfig(trials=2, revision_probability=0))
+        incremental = default["strategies"]["incremental"]["average_run"]
+        self.assertEqual(len(incremental), 40)
+        self.assertEqual(
+            [(block["start_line"], block["end_line"], block["line_count"]) for block in incremental[:2]],
+            [(0, 100, 100), (100, 200, 100)],
+        )
+        self.assertEqual((incremental[-1]["start_line"], incremental[-1]["end_line"]), (3900, 4000))
+
+        partial = run_simulation(SimulationConfig(trials=2, incremental_block_size=333))
+        blocks = partial["strategies"]["incremental"]["average_run"]
+        self.assertEqual((blocks[-1]["start_line"], blocks[-1]["end_line"], blocks[-1]["line_count"]), (3996, 4000, 4))
+        self.assertEqual(sum(block["line_count"] for block in blocks), 4000)
+
+        delayed = default["strategies"]["delayed"]["average_run"]
+        self.assertEqual(
+            [(block["start_line"], block["end_line"], block["line_count"]) for block in delayed],
+            [(0, 3600, 3600), (3600, 4000, 400)],
+        )
+        for strategy in default["strategies"].values():
+            self.assertEqual(strategy["average_run"][0].keys(), {
+                "start_line", "end_line", "line_count", "mean_writing_time",
+                "mean_review_time", "mean_revision_time", "mean_rereview_time",
+                "mean_revised_lines",
+            })
+            for key in ("writing_time", "review_time", "revision_time", "rereview_time"):
+                self.assertAlmostEqual(
+                    sum(block[f"mean_{key}"] for block in strategy["average_run"]),
+                    strategy[f"mean_{key}"],
+                )
+        json.dumps(default)
+
+    def test_average_run_exact_zero_and_full_revision_costs_with_setup(self):
+        config = SimulationConfig(trials=1, revision_probability=0, review_setup_time=2)
+        zero = run_simulation(config)
+        self.assertEqual(
+            zero["strategies"]["incremental"]["average_run"][0],
+            {
+                "start_line": 0, "end_line": 100, "line_count": 100,
+                "mean_writing_time": 100, "mean_review_time": 27,
+                "mean_revision_time": 0, "mean_rereview_time": 0,
+                "mean_revised_lines": 0,
+            },
+        )
+        self.assertEqual(
+            [(block["mean_review_time"], block["mean_rereview_time"]) for block in zero["strategies"]["delayed"]["average_run"]],
+            [(1802, 0), (127, 0)],
+        )
+
+        full = run_simulation(replace(config, revision_probability=1))
+        self.assertEqual(
+            [(block["mean_revision_time"], block["mean_rereview_time"], block["mean_revised_lines"])
+             for block in full["strategies"]["delayed"]["average_run"]],
+            [(3600, 1802, 3600), (400, 127, 400)],
+        )
+        self.assertEqual(
+            [(block["mean_revision_time"], block["mean_rereview_time"], block["mean_revised_lines"])
+             for block in full["strategies"]["incremental"]["average_run"][:2]],
+            [(100, 27, 100), (100, 27, 100)],
+        )
+
+    def test_average_run_rereview_means_average_actual_trial_costs(self):
+        config = SimulationConfig(trials=5, seed=17, incremental_block_size=4000)
+        result = run_simulation(config)
+        rng = random.Random(config.seed)
+        revision_counts = []
+        for _ in range(config.trials):
+            revision_counts.append(sum(rng.random() < config.revision_probability for _ in range(4000)))
+
+        def review_cost(lines):
+            if lines == 0:
+                return 0
+            multiplier = 1 if lines <= 100 else 1.25 if lines <= 500 else 1.5 if lines <= 1000 else 2
+            return lines * config.review_time_per_line * multiplier + config.review_setup_time
+
+        expected = sum(review_cost(count) for count in revision_counts) / config.trials
+        block = result["strategies"]["incremental"]["average_run"][0]
+        self.assertEqual(block["mean_rereview_time"], expected)
+
+    def test_average_run_component_sums_match_seeded_strategy_means(self):
+        result = run_simulation(SimulationConfig(trials=37, seed=202, incremental_block_size=333))
+        for strategy in result["strategies"].values():
+            for component in ("writing_time", "review_time", "revision_time", "rereview_time"):
+                self.assertAlmostEqual(
+                    sum(block[f"mean_{component}"] for block in strategy["average_run"]),
+                    strategy[f"mean_{component}"],
+                )
+
     def test_zero_and_full_revisions_match_hand_totals(self):
         zero = run_simulation(SimulationConfig(trials=1, revision_probability=0))
         self.assertEqual(zero["strategies"]["incremental"]["total_time"]["mean"], 5000)

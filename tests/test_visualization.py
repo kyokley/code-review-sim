@@ -47,6 +47,68 @@ class SvgParser(html.parser.HTMLParser):
 
 
 class VisualizationTests(unittest.TestCase):
+    def test_average_run_timelines_are_paired_accessible_and_on_common_scale(self):
+        result = sample_result()
+        def block(start, end, write, review, revise, rereview, revised):
+            return {"start_line": start, "end_line": end, "line_count": end-start,
+                    "mean_writing_time": write, "mean_review_time": review,
+                    "mean_revision_time": revise, "mean_rereview_time": rereview,
+                    "mean_revised_lines": revised}
+        result["strategies"]["incremental"]["average_run"] = [
+            block(0, 100, 100, 25, 10, 3, 10),
+            block(100, 200, 100, 25, 10, 3, 10),
+        ]
+        result["strategies"]["delayed"]["average_run"] = [
+            block(0, 3600, 3600, 1800, 360, 100, 360),
+            block(3600, 4000, 400, 100, 40, 10, 40),
+        ]
+        result["strategies"]["incremental"].update(
+            mean_writing_time=200, mean_review_time=50,
+            mean_revision_time=20, mean_rereview_time=6,
+        )
+        result["strategies"]["incremental"]["total_time"]["mean"] = 276
+        result["strategies"]["delayed"].update(
+            mean_writing_time=4000, mean_review_time=1900,
+            mean_revision_time=400, mean_rereview_time=110,
+        )
+        result["strategies"]["delayed"]["total_time"]["mean"] = 6410
+        source = render_html(result)
+        parser = SvgParser(); parser.feed(source)
+        self.assertEqual(parser.svg, 4)
+        for svg_id in ("incremental-timeline", "delayed-timeline"):
+            self.assertRegex(source, rf'<svg id="{svg_id}"[^>]+role="img"')
+        self.assertIn("averages across trials", source)
+        self.assertIn("0–100", source)
+        self.assertIn("0–3600 lines", source)
+        self.assertIn("3600–4000 lines", source)
+        self.assertIn("data-start=\"3600\"", source)
+        self.assertIn("data-effort-end=\"276\"", source)
+        self.assertIn("data-effort-end=\"6410\"", source)
+        self.assertEqual(source.count('data-effort-scale="6410"'), 2)
+        self.assertIn("Writing → Initial review → Revision → Follow-up review", source)
+        self.assertEqual(parser.invalid, [])
+
+    def test_legacy_summary_has_no_fabricated_lifecycle_images(self):
+        source = render_html(sample_result())
+        self.assertNotIn('id="incremental-timeline"', source)
+        self.assertNotIn('id="delayed-timeline"', source)
+        self.assertIn("Average lifecycle timeline unavailable", source)
+
+    def test_zero_effort_and_zero_revision_timeline_geometry(self):
+        result = sample_result(1)
+        zero_block = {"start_line": 0, "end_line": 4000, "line_count": 4000,
+                      "mean_writing_time": 0, "mean_review_time": 0,
+                      "mean_revision_time": 0, "mean_rereview_time": 0,
+                      "mean_revised_lines": 0}
+        for strategy in result["strategies"].values():
+            strategy["average_run"] = [zero_block]
+            strategy["mean_writing_time"] = strategy["mean_review_time"] = 0
+            strategy["mean_revision_time"] = strategy["mean_rereview_time"] = 0
+            strategy["total_time"] = {"mean": 0, "stdev": 0, "p05": 0, "p50": 0, "p95": 0}
+        parser = SvgParser(); parser.feed(render_html(result))
+        self.assertEqual(parser.invalid, [])
+        self.assertEqual(parser.svg, 4)
+
     def test_metrics_configuration_and_self_contained_accessible_report(self):
         source = render_html(sample_result())
         self.assertIn("<!doctype html>", source.lower())

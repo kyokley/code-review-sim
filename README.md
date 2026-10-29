@@ -100,7 +100,8 @@ Higher setup costs can offset the advantage of small review blocks.
 - Win probability is the fraction of trials where incremental effort is
   strictly lower. Ties are reported separately.
 
-JSON contains configuration, both strategy summaries, and comparison statistics.
+JSON contains configuration, both strategy summaries, per-block average lifecycle
+data (`average_run` for each strategy), and comparison statistics.
 CSV contains one flattened summary row per strategy. Neither export contains
 individual trial records.
 
@@ -116,6 +117,8 @@ or plotting packages, and contains:
 
 - Mean effort broken down into writing, initial review, revision, and follow-up
   review, with comparable scales for both strategies.
+- An embedded average-run timeline image for each method, showing writing,
+  review, revision, and follow-up review in their lifecycle order.
 - The 5th, 50th, and 95th percentiles of total simulated effort.
 - Paired mean savings, their 95% confidence interval when available, and
   win/tie probabilities.
@@ -125,6 +128,17 @@ HTML, JSON, and CSV exports from one command use the same simulation results.
 The charts show summary statistics, not individual trials or a reconstructed
 probability distribution. Percentile ranges describe variation across trials;
 the confidence interval describes uncertainty in mean paired savings.
+
+The average-run images use the observed mean effort of each block across the
+same trials. They are not selected individual trials, and average revision
+counts can be fractional. Both methods share an effort scale; code-progress
+milestones identify when reviews start. Delayed review first starts after
+3,600 original lines, then covers the final 400 lines. The final incremental
+block may be smaller than the configured block size.
+
+Regenerate existing HTML reports with `--html report.html` to include the new
+images. Legacy summary dictionaries without block averages still render the
+other charts, but cannot supply average-run images.
 
 These experiments compare the stated assumptions; they do not establish a
 universal best code review process. See [SPEC.md](SPEC.md) for the model contract.

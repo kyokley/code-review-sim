@@ -94,6 +94,19 @@ def run_simulation(config):
     strategies = {
         "incremental": {
             "blocks": incremental_blocks,
+            "block_sums": [
+                {
+                    "start_line": sum(incremental_blocks[:index]),
+                    "end_line": sum(incremental_blocks[: index + 1]),
+                    "line_count": size,
+                    "writing_time": 0.0,
+                    "review_time": 0.0,
+                    "revision_time": 0.0,
+                    "rereview_time": 0.0,
+                    "revised_lines": 0.0,
+                }
+                for index, size in enumerate(incremental_blocks)
+            ],
             "writing": [],
             "review": [],
             "revision": [],
@@ -104,6 +117,19 @@ def run_simulation(config):
         },
         "delayed": {
             "blocks": delayed_blocks,
+            "block_sums": [
+                {
+                    "start_line": sum(delayed_blocks[:index]),
+                    "end_line": sum(delayed_blocks[: index + 1]),
+                    "line_count": size,
+                    "writing_time": 0.0,
+                    "review_time": 0.0,
+                    "revision_time": 0.0,
+                    "rereview_time": 0.0,
+                    "revised_lines": 0.0,
+                }
+                for index, size in enumerate(delayed_blocks)
+            ],
             "writing": [],
             "review": [],
             "revision": [],
@@ -125,15 +151,24 @@ def run_simulation(config):
             revised_lines = 0
             rereview = 0.0
             review_count = 0
-            for size in block_sizes:
+            for block_index, size in enumerate(block_sizes):
                 revised = sum(revision_flags[cursor : cursor + size])
                 cursor += size
                 revised_lines += revised
-                initial_review += _review_cost(size, config)
+                initial_block_review = _review_cost(size, config)
+                rereview_block = _review_cost(revised, config)
+                initial_review += initial_block_review
                 review_count += 1
-                rereview += _review_cost(revised, config)
+                rereview += rereview_block
                 if revised:
                     review_count += 1
+
+                block = result["block_sums"][block_index]
+                block["writing_time"] += size * config.write_time_per_line
+                block["review_time"] += initial_block_review
+                block["revision_time"] += revised * config.revision_time_per_line
+                block["rereview_time"] += rereview_block
+                block["revised_lines"] += revised
 
             writing = TOTAL_LINES * config.write_time_per_line
             revision = revised_lines * config.revision_time_per_line
@@ -150,6 +185,19 @@ def run_simulation(config):
     for name, result in strategies.items():
         output_strategies[name] = {
             "blocks": result["blocks"],
+            "average_run": [
+                {
+                    "start_line": block["start_line"],
+                    "end_line": block["end_line"],
+                    "line_count": block["line_count"],
+                    "mean_writing_time": block["writing_time"] / config.trials,
+                    "mean_review_time": block["review_time"] / config.trials,
+                    "mean_revision_time": block["revision_time"] / config.trials,
+                    "mean_rereview_time": block["rereview_time"] / config.trials,
+                    "mean_revised_lines": block["revised_lines"] / config.trials,
+                }
+                for block in result["block_sums"]
+            ],
             "mean_writing_time": statistics.mean(result["writing"]),
             "mean_review_time": statistics.mean(result["review"]),
             "mean_revision_time": statistics.mean(result["revision"]),
