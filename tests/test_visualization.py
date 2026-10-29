@@ -7,24 +7,24 @@ from code_review_sim.visualization import render_html
 
 def sample_result(trials=12, saved=15.0, ci=[10.0, 20.0]):
     return {
-        "config": {"trials": trials, "seed": 7, "incremental_block_size": 250,
+        "config": {"trials": trials, "seed": 7, "agile_block_size": 250,
                    "revision_probability": 0.2, "write_time_per_line": 1,
                    "review_time_per_line": 0.25, "revision_time_per_line": 2,
                    "review_setup_time": 3, "total_lines": 4000},
         "strategies": {
-            "incremental": {"blocks": [250] * 16, "mean_writing_time": 4000,
+            "agile": {"blocks": [250] * 16, "mean_writing_time": 4000,
                 "mean_review_time": 1100, "mean_revision_time": 1600,
                 "mean_rereview_time": 200, "mean_revised_lines": 800,
                 "mean_review_count": 32, "total_time": {"mean": 6900, "stdev": 30,
                     "p05": 6840, "p50": 6900, "p95": 6960}},
-            "delayed": {"blocks": [3600, 400], "mean_writing_time": 4000,
+            "waterfall": {"blocks": [3600, 400], "mean_writing_time": 4000,
                 "mean_review_time": 1900, "mean_revision_time": 1600,
                 "mean_rereview_time": 400, "mean_revised_lines": 800,
                 "mean_review_count": 4, "total_time": {"mean": 7900, "stdev": 50,
                     "p05": 7800, "p50": 7900, "p95": 8000}},
         },
         "comparison": {"mean_time_saved": saved, "mean_percent_saved": saved / 79,
-            "paired_savings_ci95": ci, "incremental_win_probability": 0.6,
+            "paired_savings_ci95": ci, "agile_win_probability": 0.6,
             "tie_probability": 0.1},
     }
 
@@ -54,28 +54,32 @@ class VisualizationTests(unittest.TestCase):
                     "mean_writing_time": write, "mean_review_time": review,
                     "mean_revision_time": revise, "mean_rereview_time": rereview,
                     "mean_revised_lines": revised}
-        result["strategies"]["incremental"]["average_run"] = [
+        result["strategies"]["agile"]["average_run"] = [
             block(0, 100, 100, 25, 10, 3, 10),
             block(100, 200, 100, 25, 10, 3, 10),
         ]
-        result["strategies"]["delayed"]["average_run"] = [
+        result["strategies"]["waterfall"]["average_run"] = [
             block(0, 3600, 3600, 1800, 360, 100, 360),
             block(3600, 4000, 400, 100, 40, 10, 40),
         ]
-        result["strategies"]["incremental"].update(
+        result["strategies"]["agile"].update(
             mean_writing_time=200, mean_review_time=50,
             mean_revision_time=20, mean_rereview_time=6,
         )
-        result["strategies"]["incremental"]["total_time"]["mean"] = 276
-        result["strategies"]["delayed"].update(
+        result["strategies"]["agile"]["total_time"]["mean"] = 276
+        result["strategies"]["waterfall"].update(
             mean_writing_time=4000, mean_review_time=1900,
             mean_revision_time=400, mean_rereview_time=110,
         )
-        result["strategies"]["delayed"]["total_time"]["mean"] = 6410
+        result["strategies"]["waterfall"]["total_time"]["mean"] = 6410
         source = render_html(result)
+        self.assertIn("<h3>Agile</h3>", source)
+        self.assertIn("<h3>Waterfall</h3>", source)
+        self.assertIn("Waterfall minus agile", source)
+        self.assertIn("Agile Block Size", source)
         parser = SvgParser(); parser.feed(source)
         self.assertEqual(parser.svg, 4)
-        for svg_id in ("incremental-timeline", "delayed-timeline"):
+        for svg_id in ("agile-timeline", "waterfall-timeline"):
             self.assertRegex(source, rf'<svg id="{svg_id}"[^>]+role="img"')
         self.assertIn("averages across trials", source)
         self.assertIn("0–100", source)
@@ -90,8 +94,8 @@ class VisualizationTests(unittest.TestCase):
 
     def test_legacy_summary_has_no_fabricated_lifecycle_images(self):
         source = render_html(sample_result())
-        self.assertNotIn('id="incremental-timeline"', source)
-        self.assertNotIn('id="delayed-timeline"', source)
+        self.assertNotIn('id="agile-timeline"', source)
+        self.assertNotIn('id="waterfall-timeline"', source)
         self.assertIn("Average lifecycle timeline unavailable", source)
 
     def test_zero_effort_and_zero_revision_timeline_geometry(self):
@@ -151,10 +155,10 @@ class VisualizationTests(unittest.TestCase):
 
     def test_close_and_equal_quantiles_keep_exact_labels_separate(self):
         result = sample_result()
-        result["strategies"]["incremental"]["total_time"].update(
+        result["strategies"]["agile"]["total_time"].update(
             p05=6900, p50=6900, p95=6900
         )
-        result["strategies"]["delayed"]["total_time"].update(
+        result["strategies"]["waterfall"]["total_time"].update(
             p05=7900, p50=7901, p95=7902
         )
         source = render_html(result)

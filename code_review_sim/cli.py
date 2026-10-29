@@ -15,13 +15,13 @@ from .model import SimulationConfig
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="code-review-sim",
-        description="Compare incremental and delayed code review effort.",
+        description="Compare agile and waterfall code review effort.",
     )
     parser.add_argument("--trials", type=int, default=1000, help="number of trials (default: 1000)")
     parser.add_argument("--seed", type=int, default=42, help="random seed (default: 42)")
     parser.add_argument(
         "--block-size", type=int, default=100,
-        help="incremental review block size in lines (default: 100)",
+        help="agile review block size in lines (default: 100)",
     )
     parser.add_argument(
         "--revision-probability", type=float, default=0.1,
@@ -111,12 +111,12 @@ def _print_report(result: dict[str, Any], stream: Any = None) -> None:
     interval = comparison["paired_savings_ci95"]
     interval_text = "unavailable" if interval is None else f"[{interval[0]:.2f}, {interval[1]:.2f}]"
     print(
-        f"Mean savings (delayed - incremental): {comparison['mean_time_saved']:.2f} "
+        f"Mean savings (waterfall - agile): {comparison['mean_time_saved']:.2f} "
         f"({comparison['mean_percent_saved']:.2f}%); paired 95% CI: {interval_text}",
         file=stream,
     )
     print(
-        f"Incremental win probability: {comparison['incremental_win_probability']:.1%}; "
+        f"Agile win probability: {comparison['agile_win_probability']:.1%}; "
         f"tie probability: {comparison['tie_probability']:.1%}",
         file=stream,
     )
@@ -133,7 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     config = SimulationConfig(
         trials=args.trials,
         seed=args.seed,
-        incremental_block_size=args.block_size,
+        agile_block_size=args.block_size,
         revision_probability=args.revision_probability,
         write_time_per_line=args.write_time_per_line,
         review_time_per_line=args.review_time_per_line,

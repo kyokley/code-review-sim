@@ -27,16 +27,16 @@ def sample_result():
         "mean_review_count": 1.0,
         "total_time": {"mean": 5000.0, "stdev": 0.0, "p05": 5000.0, "p50": 5000.0, "p95": 5000.0},
     }
-    delayed = dict(strategy, blocks=[3600, 400])
-    delayed["total_time"] = {"mean": 5925.0, "stdev": 0.0, "p05": 5925.0, "p50": 5925.0, "p95": 5925.0}
+    waterfall = dict(strategy, blocks=[3600, 400])
+    waterfall["total_time"] = {"mean": 5925.0, "stdev": 0.0, "p05": 5925.0, "p50": 5925.0, "p95": 5925.0}
     return {
-        "config": {"trials": 1, "seed": 42, "incremental_block_size": 100},
-        "strategies": {"incremental": strategy, "delayed": delayed},
+        "config": {"trials": 1, "seed": 42, "agile_block_size": 100},
+        "strategies": {"agile": strategy, "waterfall": waterfall},
         "comparison": {
             "mean_time_saved": 925.0,
             "mean_percent_saved": 15.61181434599156,
             "paired_savings_ci95": None,
-            "incremental_win_probability": 1.0,
+            "agile_win_probability": 1.0,
             "tie_probability": 0.0,
         },
     }
@@ -85,7 +85,7 @@ class CliTests(unittest.TestCase):
             self.assertEqual(json.loads(json_path.read_text()), result)
             with csv_path.open(newline="", encoding="utf-8") as stream:
                 rows = list(csv.DictReader(stream))
-            self.assertEqual([row["strategy"] for row in rows], ["incremental", "delayed"])
+            self.assertEqual([row["strategy"] for row in rows], ["agile", "waterfall"])
             self.assertEqual(rows[0]["total_time_mean"], "5000.0")
             self.assertEqual(rows[1]["total_time_p95"], "5925.0")
 
@@ -117,8 +117,22 @@ class CliTests(unittest.TestCase):
             capture_output=True, text=True, check=False,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Compare agile and waterfall", result.stdout)
         self.assertIn("--block-size", result.stdout)
         self.assertIn("--json PATH", result.stdout)
+
+    def test_new_strategy_terms_are_exposed_in_cli_and_exports(self):
+        result = sample_result()
+        with tempfile.TemporaryDirectory() as directory:
+            csv_path = Path(directory, "summary.csv")
+            status, output = self.invoke_with_engine([], lambda _: result)
+            self.assertEqual(status, 0)
+            self.assertIn("agile", output)
+            self.assertIn("waterfall", output)
+            self.invoke_with_engine(["--csv", str(csv_path)], lambda _: result)
+            with csv_path.open(newline="", encoding="utf-8") as stream:
+                rows = list(csv.DictReader(stream))
+            self.assertEqual([row["strategy"] for row in rows], ["agile", "waterfall"])
 
     def test_html_help_mentions_path(self):
         result = subprocess.run(

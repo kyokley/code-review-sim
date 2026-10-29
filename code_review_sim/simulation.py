@@ -26,14 +26,14 @@ def _validate_config(config):
     if not isinstance(config, SimulationConfig):
         raise ValueError("config must be a SimulationConfig")
 
-    for name in ("trials", "incremental_block_size", "seed"):
+    for name in ("trials", "agile_block_size", "seed"):
         value = getattr(config, name)
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"{name} must be an integer")
     if config.trials <= 0:
         raise ValueError("trials must be positive")
-    if not 1 <= config.incremental_block_size <= TOTAL_LINES:
-        raise ValueError("incremental_block_size must be between 1 and 4000")
+    if not 1 <= config.agile_block_size <= TOTAL_LINES:
+        raise ValueError("agile_block_size must be between 1 and 4000")
     if not isinstance(config.revision_probability, (int, float)) or isinstance(
         config.revision_probability, bool
     ):
@@ -89,15 +89,15 @@ def _summarize(values):
 def run_simulation(config):
     """Run paired review-strategy trials and return JSON-safe summaries."""
     _validate_config(config)
-    incremental_blocks = _blocks(config.incremental_block_size)
-    delayed_blocks = [3600, 400]
+    agile_blocks = _blocks(config.agile_block_size)
+    waterfall_blocks = [3600, 400]
     strategies = {
-        "incremental": {
-            "blocks": incremental_blocks,
+        "agile": {
+            "blocks": agile_blocks,
             "block_sums": [
                 {
-                    "start_line": sum(incremental_blocks[:index]),
-                    "end_line": sum(incremental_blocks[: index + 1]),
+                    "start_line": sum(agile_blocks[:index]),
+                    "end_line": sum(agile_blocks[: index + 1]),
                     "line_count": size,
                     "writing_time": 0.0,
                     "review_time": 0.0,
@@ -105,7 +105,7 @@ def run_simulation(config):
                     "rereview_time": 0.0,
                     "revised_lines": 0.0,
                 }
-                for index, size in enumerate(incremental_blocks)
+                for index, size in enumerate(agile_blocks)
             ],
             "writing": [],
             "review": [],
@@ -115,12 +115,12 @@ def run_simulation(config):
             "review_count": [],
             "total": [],
         },
-        "delayed": {
-            "blocks": delayed_blocks,
+        "waterfall": {
+            "blocks": waterfall_blocks,
             "block_sums": [
                 {
-                    "start_line": sum(delayed_blocks[:index]),
-                    "end_line": sum(delayed_blocks[: index + 1]),
+                    "start_line": sum(waterfall_blocks[:index]),
+                    "end_line": sum(waterfall_blocks[: index + 1]),
                     "line_count": size,
                     "writing_time": 0.0,
                     "review_time": 0.0,
@@ -128,7 +128,7 @@ def run_simulation(config):
                     "rereview_time": 0.0,
                     "revised_lines": 0.0,
                 }
-                for index, size in enumerate(delayed_blocks)
+                for index, size in enumerate(waterfall_blocks)
             ],
             "writing": [],
             "review": [],
@@ -144,7 +144,7 @@ def run_simulation(config):
     for _ in range(config.trials):
         # One shared vector preserves paired per-line revisions across partitions.
         revision_flags = [rng.random() < config.revision_probability for _ in range(TOTAL_LINES)]
-        for name, block_sizes in (("incremental", incremental_blocks), ("delayed", delayed_blocks)):
+        for name, block_sizes in (("agile", agile_blocks), ("waterfall", waterfall_blocks)):
             result = strategies[name]
             cursor = 0
             initial_review = 0.0
@@ -207,11 +207,11 @@ def run_simulation(config):
             "total_time": _summarize(result["total"]),
         }
 
-    incremental_totals = strategies["incremental"]["total"]
-    delayed_totals = strategies["delayed"]["total"]
-    paired_savings = [delayed - incremental for delayed, incremental in zip(delayed_totals, incremental_totals)]
+    agile_totals = strategies["agile"]["total"]
+    waterfall_totals = strategies["waterfall"]["total"]
+    paired_savings = [waterfall - agile for waterfall, agile in zip(waterfall_totals, agile_totals)]
     mean_saved = statistics.mean(paired_savings)
-    delayed_mean = statistics.mean(delayed_totals)
+    waterfall_mean = statistics.mean(waterfall_totals)
     if config.trials < 2:
         confidence_interval = None
     else:
@@ -223,9 +223,9 @@ def run_simulation(config):
         "strategies": output_strategies,
         "comparison": {
             "mean_time_saved": mean_saved,
-            "mean_percent_saved": 100 * mean_saved / delayed_mean if delayed_mean else 0.0,
+            "mean_percent_saved": 100 * mean_saved / waterfall_mean if waterfall_mean else 0.0,
             "paired_savings_ci95": confidence_interval,
-            "incremental_win_probability": sum(value > 0 for value in paired_savings) / config.trials,
+            "agile_win_probability": sum(value > 0 for value in paired_savings) / config.trials,
             "tie_probability": sum(value == 0 for value in paired_savings) / config.trials,
         },
     }

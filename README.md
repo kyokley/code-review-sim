@@ -1,7 +1,7 @@
 # Code review Monte Carlo simulator
 
-A dependency-free Python application comparing incremental code review with
-reviews started after 90% of a 4,000-line project is written.
+A dependency-free Python application comparing agile code review with
+waterfall reviews started after 90% of a 4,000-line project is written.
 
 Requires Python 3.10 or newer. Run from this directory:
 
@@ -19,7 +19,7 @@ code-review-sim --trials 10000 --seed 42
 
 ## Experiments
 
-The default experiment runs 1,000 paired trials with 100-line incremental
+The default experiment runs 1,000 paired trials with 100-line agile
 reviews and a 10% probability that each line needs revision.
 
 ```sh
@@ -41,15 +41,15 @@ python3 -m code_review_sim --html report.html
 python3 -m code_review_sim --trials 1 --revision-probability 0
 ```
 
-With the final command, default incremental effort is **5,000 time units**
-and delayed effort is **5,925 time units**. Writing contributes 4,000 units
+With the final command, default agile effort is **5,000 time units**
+and waterfall effort is **5,925 time units**. Writing contributes 4,000 units
 to each; initial review contributes 1,000 and 1,925 respectively.
 
 ## What the model assumes
 
-Each trial creates exactly 4,000 original lines. Incremental reviews occur
-after each configured block, including any final partial block. Delayed
-reviews cover the first 3,600 lines and then the final 400 lines.
+Each trial creates exactly 4,000 original lines. Agile reviews occur after
+each configured block, including any final partial block. Waterfall reviews
+cover the first 3,600 lines and then the final 400 lines.
 
 Initial review cost is proportional to block size:
 
@@ -90,14 +90,14 @@ Higher setup costs can offset the advantage of small review blocks.
   5th, 50th, and 95th percentiles of simulated total effort.
 - Component means separate writing, initial review, revision, and follow-up
   review effort. Review counts include follow-ups.
-- Time saved is **delayed effort minus incremental effort**. Positive means
-  incremental reviews require less effort; negative means they require more.
-- Percentage saved divides mean paired savings by delayed mean total effort.
+- Time saved is **waterfall effort minus agile effort**. Positive means
+  agile reviews require less effort; negative means they require more.
+- Percentage saved divides mean paired savings by waterfall mean total effort.
 - The 95% confidence interval describes uncertainty in **mean paired savings**,
   using a normal approximation. It is not the range containing 95% of projects,
   and is unavailable for one trial. More trials reduce Monte Carlo noise, not
   uncertainty in the assumptions.
-- Win probability is the fraction of trials where incremental effort is
+- Win probability is the fraction of trials where agile effort is
   strictly lower. Ties are reported separately.
 
 JSON contains configuration, both strategy summaries, per-block average lifecycle
@@ -132,8 +132,8 @@ the confidence interval describes uncertainty in mean paired savings.
 The average-run images use the observed mean effort of each block across the
 same trials. They are not selected individual trials, and average revision
 counts can be fractional. Both methods share an effort scale; code-progress
-milestones identify when reviews start. Delayed review first starts after
-3,600 original lines, then covers the final 400 lines. The final incremental
+milestones identify when reviews start. Waterfall review first starts after
+3,600 original lines, then covers the final 400 lines. The final agile
 block may be smaller than the configured block size.
 
 Regenerate existing HTML reports with `--html report.html` to include the new
