@@ -47,6 +47,34 @@ class SvgParser(html.parser.HTMLParser):
 
 
 class VisualizationTests(unittest.TestCase):
+    def test_all_strategy_surfaces_use_waterfall_first_without_mutating_input(self):
+        for reverse in (False, True):
+            result = sample_result()
+            result["strategies"]["waterfall"]["mean_writing_time"] = 4444
+            result["strategies"]["agile"]["mean_writing_time"] = 3333
+            for strategy in result["strategies"].values():
+                strategy["average_run"] = [{"start_line": 0, "end_line": 4000,
+                    "mean_writing_time": strategy["mean_writing_time"],
+                    "mean_review_time": 0, "mean_revision_time": 0,
+                    "mean_rereview_time": 0}]
+            if reverse:
+                result["strategies"] = dict(reversed(list(result["strategies"].items())))
+            original_order = list(result["strategies"])
+            source = render_html(result)
+            self.assertEqual(list(result["strategies"]), original_order)
+            cards = source.split('<div class="cards">', 1)[1].split("</div></div>", 1)[0]
+            self.assertLess(cards.index("<h3>Waterfall</h3>"), cards.index("<h3>Agile</h3>"))
+            effort_svg = source.split('aria-labelledby="effort-title effort-desc"', 1)[1].split("</svg>", 1)[0]
+            self.assertLess(effort_svg.index('class="svg-label">Waterfall'), effort_svg.index('class="svg-label">Agile'))
+            range_svg = source.split('aria-labelledby="range-title range-desc"', 1)[1].split("</svg>", 1)[0]
+            self.assertLess(range_svg.index('class="svg-label">Waterfall'), range_svg.index('class="svg-label">Agile'))
+            headers = source.split('<table class="component-table">', 1)[1].split("</thead>", 1)[0]
+            self.assertLess(headers.index(">Waterfall</th>"), headers.index(">Agile</th>"))
+            row = source.split('<tr><th scope="row">Writing</th>', 1)[1].split("</tr>", 1)[0]
+            self.assertIn("<td>4444</td><td>3333</td>", row)
+            lifecycle = source.split('<section class="panel"><h2>Average review lifecycle</h2>', 1)[1]
+            self.assertLess(lifecycle.index("Waterfall method"), lifecycle.index("Agile method"))
+
     def test_average_run_timelines_are_paired_accessible_and_on_common_scale(self):
         result = sample_result()
         def block(start, end, write, review, revise, rereview, revised):

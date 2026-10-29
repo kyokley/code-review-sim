@@ -35,8 +35,12 @@ def _line_num(value):
     return str(int(value)) if value.is_integer() else _raw_num(value)
 
 
+def _ordered_strategies(strategies):
+    return {name: strategies[name] for name in ("waterfall", "agile") if name in strategies}
+
+
 def _svg(result):
-    strategies = result["strategies"]
+    strategies = _ordered_strategies(result["strategies"])
     totals = [max(0.0, _num(s["total_time"]["mean"])) for s in strategies.values()]
     maximum = max(totals, default=0.0)
     # Keep room at the right for the total label, even when the bar is maximal.
@@ -124,7 +128,7 @@ def _timelines(strategies):
                   for block in strategy["average_run"]) for strategy in strategies.values()]
     shared_scale = max(totals, default=0.0) or 1.0
     parts = ['<p class="muted">Each image shows averages across trials, not an actual sampled run. Fractional revised-line averages are expected. Rows are mean review-ordinal blocks, not a fixed partition. Agile blocks have fresh random binomial sizes with nominal mean shown in the configuration. Fractional boundaries are averages; missing tail reviews contribute boundaries at 4,000 lines, zero lines, and zero effort. Vertical milestones show mean code progress; horizontal position is serial effort in time units. Both images use the same effort scale. Stage order: Writing → Initial review → Revision → Follow-up review.</p>']
-    for name in ("agile", "waterfall"):
+    for name in ("waterfall", "agile"):
         run = strategies[name]["average_run"]
         if run:
             parts.append(f'<figure class="timeline"><figcaption>{html.escape(name.title())} method · {len(run)} mean review-ordinal blocks</figcaption><div class="chart">{_timeline_svg(name, run, shared_scale)}</div></figure>')
@@ -135,7 +139,8 @@ def _timelines(strategies):
 
 def render_html(result: dict) -> str:
     """Render a simulation summary as an accessible, dependency-free HTML report."""
-    cfg, comp, strategies = result["config"], result["comparison"], result["strategies"]
+    cfg, comp = result["config"], result["comparison"]
+    strategies = _ordered_strategies(result["strategies"])
     ci = comp.get("paired_savings_ci95")
     ci_text = "Not available (one trial)" if ci is None else f"[{_text(ci[0])}, {_text(ci[1])}]"
     saving = _num(comp.get("mean_time_saved", 0))
